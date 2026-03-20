@@ -4,6 +4,75 @@ function fetchWithTimeout(url, options, timeoutMs = 30000) {
   return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(id));
 }
 
+const BRAZIL_STATE_CODES = {
+  acre: "AC",
+  alagoas: "AL",
+  amapa: "AP",
+  amazonas: "AM",
+  bahia: "BA",
+  ceara: "CE",
+  "distrito federal": "DF",
+  "espirito santo": "ES",
+  goias: "GO",
+  maranhao: "MA",
+  "mato grosso": "MT",
+  "mato grosso do sul": "MS",
+  "minas gerais": "MG",
+  para: "PA",
+  paraiba: "PB",
+  parana: "PR",
+  pernambuco: "PE",
+  piaui: "PI",
+  "rio de janeiro": "RJ",
+  "rio grande do norte": "RN",
+  "rio grande do sul": "RS",
+  rondonia: "RO",
+  roraima: "RR",
+  "santa catarina": "SC",
+  "sao paulo": "SP",
+  sergipe: "SE",
+  tocantins: "TO",
+};
+
+function normalizeText(value) {
+  return (value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim();
+}
+
+function normalizeState(value) {
+  const normalized = normalizeText(value).toLowerCase();
+  if (!normalized) return null;
+  if (normalized.length === 2) return normalized.toUpperCase();
+  return BRAZIL_STATE_CODES[normalized] || null;
+}
+
+function normalizeZip(value) {
+  return (value || "").replace(/\D/g, "");
+}
+
+function buildRodonavesAddress(address, fallbackZip) {
+  const city = (address?.city || "").trim();
+  const state = normalizeState(address?.province);
+  const zipCode = normalizeZip(address?.zipcode || address?.postal_code) || fallbackZip;
+
+  if (!city || !state || !zipCode) return null;
+
+  return {
+    ZipCode: zipCode,
+    TypeAddress: null,
+    Address: (address?.address || "").trim() || city,
+    Number: (address?.number || "").trim() || "S/N",
+    Supplement: (address?.floor || "").trim() || null,
+    District: (address?.locality || "").trim() || city,
+    City: city,
+    UnitFederation: state,
+    TaxIdRegistration: normalizeZip(address?.tax_id_registration) || null,
+    LocSit: null,
+  };
+}
+
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Headers", "authorization, content-type");
@@ -15,7 +84,19 @@ export default async function handler(req, res) {
   const startTime = Date.now();
 
   try {
-    const { username, password, cnpj, origin_zip, dest_zip, total_weight, total_value, total_volumes, packs } = req.body;
+    const {
+      username,
+      password,
+      cnpj,
+      origin_zip,
+      dest_zip,
+      total_weight,
+      total_value,
+      total_volumes,
+      packs,
+      origin_address,
+      destination_address,
+    } = req.body;
 
     if (!username || !password || !origin_zip || !dest_zip) {
       return res.status(400).json({ success: false, error: "Missing required fields" });
@@ -89,6 +170,12 @@ export default async function handler(req, res) {
       ContactPhoneNumber: "11999999999",
       TotalPackages: packs?.reduce((sum, p) => sum + (p.AmountPackages || 1), 0) || total_volumes || 1,
       Packs: packs || [{ AmountPackages: 1, Weight: Math.max(total_weight, 0.3), Length: 20, Height: 20, Width: 20 }],
+      ...(buildRodonavesAddress(origin_address, originZip)
+        ? { PickupAddress: buildRodonavesAddress(origin_address, originZip) }
+        : {}),
+      ...(buildRodonavesAddress(destination_address, destZip)
+        ? { DestinationAddress: buildRodonavesAddress(destination_address, destZip) }
+        : {}),
     };
 
     const quotRes = await fetchWithTimeout("https://quotation-apigateway.rte.com.br/api/v1/gera-cotacao", {
