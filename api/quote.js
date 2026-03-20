@@ -84,6 +84,7 @@ export default async function handler(req, res) {
       EletronicInvoiceValue: total_value,
       CustomerTaxIdRegistration: (cnpj || "").replace(/\D/g, ""),
       ReceiverCpfcnpj: "00669274127",
+      ReceiverCpfcnp: "00669274127",
       ContactName: "Cliente",
       ContactPhoneNumber: "11999999999",
       TotalPackages: packs?.reduce((sum, p) => sum + (p.AmountPackages || 1), 0) || total_volumes || 1,
