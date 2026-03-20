@@ -1,0 +1,9 @@
+{
+  "version": 2,
+  "regions": ["gru1"],
+  "functions": {
+    "api/quote.js": {
+      "maxDuration": 60
+    }
+  }
+}
